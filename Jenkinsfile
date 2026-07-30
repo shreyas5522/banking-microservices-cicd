@@ -412,6 +412,50 @@ PY
                 }
             }
         }
+
+        stage('Start Services') {
+            steps {
+                sh '''
+                    echo "Starting services with docker compose..."
+
+                    if ! docker compose version >/dev/null 2>&1; then
+                        echo "docker compose is not available on this Jenkins agent"
+                        exit 1
+                    fi
+
+                    # Start services in detached mode
+                    docker compose up -d
+                '''
+            }
+        }
+
+        stage('Smoke Test') {
+            steps {
+                sh '''
+                    echo "Running smoke test against http://localhost/..."
+
+                    # Retry for up to ~2.5 minutes (30 attempts x 5s)
+                    success=1
+                    for i in $(seq 1 30); do
+                        status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost || echo 000)
+                        echo "Attempt $i: HTTP status $status"
+                        if [ "$status" = "200" ]; then
+                            echo "Smoke test passed"
+                            success=0
+                            break
+                        fi
+
+                        sleep 5
+                    done
+
+                    if [ "$success" -ne 0 ]; then
+                        echo "Smoke test failed: frontend not responding with HTTP 200"
+                        curl -v http://localhost || true
+                        exit 1
+                    fi
+                '''
+            }
+        }
     }
 
     post {
